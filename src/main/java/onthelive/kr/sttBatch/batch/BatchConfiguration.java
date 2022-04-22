@@ -3,6 +3,7 @@ package onthelive.kr.sttBatch.batch;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import onthelive.kr.sttBatch.entity.OctopusJob;
+import onthelive.kr.sttBatch.entity.OctopusJobResultValue;
 import onthelive.kr.sttBatch.entity.OctopusSoundRecordInfo;
 import onthelive.kr.sttBatch.service.gcp.GcpSttService;
 import onthelive.kr.sttBatch.util.CommonUtil;
@@ -108,8 +109,9 @@ public class BatchConfiguration {
             CommonUtil.saveFile(filePath , destFile);
 
             StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile);
+            OctopusJobResultValue value = new OctopusJobResultValue(transcript.toString());
 
-            String newValue = new Gson().toJson(transcript);
+            String newValue = new Gson().toJson(value);
 
             octopusJob.setValue(newValue);
             octopusJob.setUpdated_datetime(LocalDateTime.now());
