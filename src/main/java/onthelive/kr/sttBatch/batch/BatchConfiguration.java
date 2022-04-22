@@ -19,14 +19,18 @@ import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 @RequiredArgsConstructor
@@ -39,6 +43,29 @@ public class BatchConfiguration {
     private final GcpSttService gcpSttService;
 
     private static final int CHUNK_SIZE = 50;
+
+    // --------------- MultiThread Test --------------- //
+
+    private int poolSize;
+
+    @Value("${poolSize:10}")
+    public void setPoolSize(int poolSize) {
+        this.poolSize = poolSize;
+    }
+
+    @Bean(name = "octopusBatchJobTaskPool")
+    public TaskExecutor executor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(poolSize);
+        executor.setMaxPoolSize(poolSize);
+        executor.setThreadNamePrefix("multi-thread-");
+        executor.setWaitForTasksToCompleteOnShutdown(Boolean.TRUE);
+        executor.initialize();
+        return executor;
+    }
+
+
+    // --------------- MultiThread Test --------------- //
 
     @Bean
     public Job octopusBatchJob() throws Exception {
@@ -58,6 +85,8 @@ public class BatchConfiguration {
                 .reader(speechToTextReader())
                 .processor(speechToTextProcessor())
                 .writer(speechToTextWriter())
+                .taskExecutor(executor())
+                .throttleLimit(poolSize)
                 .build();
     }
 
@@ -75,6 +104,7 @@ public class BatchConfiguration {
                 .queryProvider(speechToTextQueryProvider())
                 .parameterValues(parameterValues)
                 .name("speechToTextReader")
+                .saveState(false)
                 .build();
     }
 
