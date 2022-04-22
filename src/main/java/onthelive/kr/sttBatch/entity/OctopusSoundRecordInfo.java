@@ -4,13 +4,6 @@ import lombok.Data;
 
 @Data
 public class OctopusSoundRecordInfo {
-
-    private String originFileName;
-    private String storageFileName;
-    private String recordLang;
-    private String filePath;
-    private String fileType;
-    private String fileSize;
+    private AudioFile audioFile;
     private String recordTime;
-
 }

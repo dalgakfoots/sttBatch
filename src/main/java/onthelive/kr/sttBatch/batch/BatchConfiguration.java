@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import onthelive.kr.sttBatch.entity.OctopusJob;
 import onthelive.kr.sttBatch.entity.OctopusJobResultValue;
+import onthelive.kr.sttBatch.entity.AudioFile;
 import onthelive.kr.sttBatch.entity.OctopusSoundRecordInfo;
 import onthelive.kr.sttBatch.service.gcp.GcpSttService;
 import onthelive.kr.sttBatch.util.CommonUtil;
@@ -30,7 +31,6 @@ import javax.sql.DataSource;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
 @RequiredArgsConstructor
@@ -132,8 +132,8 @@ public class BatchConfiguration {
             System.out.println("BatchConfiguration.speechToTextProcessor");
             System.out.println("octopusSoundRecordInfo = " + octopusSoundRecordInfo);
 
-            String filePath = octopusSoundRecordInfo.getFilePath();
-            String fileName = octopusSoundRecordInfo.getStorageFileName();
+            String filePath = octopusSoundRecordInfo.getAudioFile().getFilePath();
+            String fileName = octopusSoundRecordInfo.getAudioFile().getStorageFileName();
             String destFile = "/Users/dalgakfoot/Documents/HUFS/fileStorage/"+fileName;
 
             CommonUtil.saveFile(filePath , destFile);
