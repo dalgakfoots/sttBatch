@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import onthelive.kr.sttBatch.entity.OctopusJob;
 import onthelive.kr.sttBatch.entity.OctopusJobResultValue;
-import onthelive.kr.sttBatch.entity.AudioFile;
 import onthelive.kr.sttBatch.entity.OctopusSoundRecordInfo;
 import onthelive.kr.sttBatch.service.gcp.GcpSttService;
 import onthelive.kr.sttBatch.util.CommonUtil;
@@ -25,6 +24,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import javax.sql.DataSource;
@@ -38,6 +38,7 @@ public class BatchConfiguration {
 
     private final JobBuilderFactory jobBuilderFactory;
     private final StepBuilderFactory stepBuilderFactory;
+    private final JdbcTemplate jdbcTemplate;
     private final DataSource dataSource;
 
     private final GcpSttService gcpSttService;
@@ -127,6 +128,22 @@ public class BatchConfiguration {
     public ItemProcessor<OctopusJob , OctopusJob> speechToTextProcessor() {
         return octopusJob -> {
 
+            /* Update JOBS.state : 'WAIT' to 'PROGRESS' begin*/
+            jdbcTemplate.update("UPDATE JOBS SET STATE = 'PROGRESS' WHERE ID = ?", octopusJob.getId());
+            /* Update JOBS.state : 'WAIT' to 'PROGRESS' end*/
+
+            /* Insert into JOB_HISTORIES begin*/
+            // id                   job_id      process_code    user_id     state       created_datetime        updated_datetime
+            // auto_increment	    `job_id`	STT	            100020	    PROGRESS	2022-04-25 05:15:08	    2022-04-25 05:15:08
+
+            jdbcTemplate.update
+                    ("INSERT INTO JOB_HISTORIES (JOB_ID, PROCESS_CODE, USER_ID, STATE, CREATED_DATETIME, UPDATED_DATETIME) " +
+                                    "VALUES (? , 'STT' , ? , 'PROGRESS' , ? , ?)",
+                            octopusJob.getId() , octopusJob.getUser_id() , LocalDateTime.now() , LocalDateTime.now()
+                    );
+            /* Insert into JOB_HISTORIES end*/
+
+
             OctopusSoundRecordInfo octopusSoundRecordInfo = new Gson().fromJson(octopusJob.getValue(), OctopusSoundRecordInfo.class);
 
             System.out.println("BatchConfiguration.speechToTextProcessor");
@@ -177,7 +194,7 @@ public class BatchConfiguration {
     public JdbcPagingItemReader<OctopusJob> updateJobReader() throws Exception {
         Map<String, Object> parameterValues = new HashMap<>();
         parameterValues.put("process_code", "STT");
-        parameterValues.put("state" , "wait");
+        parameterValues.put("state" , "PROGRESS");
 
         return new JdbcPagingItemReaderBuilder<OctopusJob>()
                 .pageSize(CHUNK_SIZE)
@@ -210,7 +227,7 @@ public class BatchConfiguration {
     public JdbcBatchItemWriter<OctopusJob> updateJobWriter() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("update jobs set state = 'complete' where id = :id")
+                .sql("update jobs set state = 'COMPLETE' where id = :id")
                 .beanMapped()
                 .build();
     }
@@ -232,7 +249,7 @@ public class BatchConfiguration {
     public JdbcPagingItemReader<OctopusJob> insertHistoryReader() throws Exception {
         Map<String, Object> parameterValues = new HashMap<>();
         parameterValues.put("process_code", "STT");
-        parameterValues.put("state" , "complete");
+        parameterValues.put("state" , "COMPLETE");
 
         return new JdbcPagingItemReaderBuilder<OctopusJob>()
                 .pageSize(CHUNK_SIZE)
@@ -250,8 +267,8 @@ public class BatchConfiguration {
         SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
         queryProvider.setDataSource(dataSource);
         queryProvider.setSelectClause("select a.* , b.value ");
-        queryProvider.setFromClause("from jobs a inner join job_results b on a.id  = b.job_id left outer join (select job_id from job_histories) c on a.id = c.job_id");
-        queryProvider.setWhereClause("where a.process_code = :process_code and a.state = :state and c.job_id is null");
+        queryProvider.setFromClause("from jobs a inner join job_results b on a.id  = b.job_id left outer join (select job_id, state from job_histories) c on a.id = c.job_id");
+        queryProvider.setWhereClause("where a.process_code = :process_code and a.state = :state and c.state = 'PROGRESS'");
 
         Map<String, Order> sortKeys = new HashMap<>(1);
         sortKeys.put("id", Order.ASCENDING);

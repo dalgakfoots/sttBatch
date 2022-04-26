@@ -53,6 +53,8 @@ public class GcpCredentialConfiguration {
         Map<String, String> google = new HashMap<>();
         google.put("GOOGLE_APPLICATION_CREDENTIALS",
                 "/Users/dalgakfoot/Documents/octopus.ws/cogent-transit-347705-55a9337cb7ff.json");
+//        google.put("GOOGLE_APPLICATION_CREDENTIALS",
+//                "/opt/gcpStt/credentials/credentials.json");
 
         setEnv(google);
         // GCP 사용을 위한 환경변수 적용 끝
