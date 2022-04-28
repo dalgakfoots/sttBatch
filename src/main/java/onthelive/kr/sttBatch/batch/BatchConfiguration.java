@@ -1,17 +1,14 @@
 package onthelive.kr.sttBatch.batch;
 
-import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
+import onthelive.kr.sttBatch.batch.stt.step.stt.SpeechToTextProcessorCustom;
 import onthelive.kr.sttBatch.entity.OctopusJob;
-import onthelive.kr.sttBatch.entity.OctopusJobResultValue;
-import onthelive.kr.sttBatch.entity.OctopusSoundRecordInfo;
 import onthelive.kr.sttBatch.service.gcp.GcpSttService;
-import onthelive.kr.sttBatch.util.CommonUtil;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
-import org.springframework.batch.item.ItemProcessor;
+import org.springframework.batch.core.listener.ExecutionContextPromotionListener;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
 import org.springframework.batch.item.database.Order;
@@ -19,6 +16,8 @@ import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
+import org.springframework.batch.item.support.CompositeItemWriter;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,7 +27,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import javax.sql.DataSource;
-import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,11 +40,13 @@ public class BatchConfiguration {
     private final JdbcTemplate jdbcTemplate;
     private final DataSource dataSource;
 
+    private final Step updateJobFailStep;
+
     private final GcpSttService gcpSttService;
 
     private static final int CHUNK_SIZE = 50;
 
-    // --------------- MultiThread Test --------------- //
+    // --------------- MultiThread --------------- //
 
     private int poolSize;
 
@@ -66,15 +67,25 @@ public class BatchConfiguration {
     }
 
 
-    // --------------- MultiThread Test --------------- //
+    // --------------- MultiThread --------------- //
+
+    // --------------- Context --------------- //
+    @Bean
+    public ExecutionContextPromotionListener promotionListener() {
+        ExecutionContextPromotionListener listener = new ExecutionContextPromotionListener();
+
+        listener.setKeys(new String[] {"jobId"});
+
+        return listener;
+    }
+    // --------------- Context --------------- //
 
     @Bean
     public Job octopusBatchJob() throws Exception {
         return jobBuilderFactory.get("octopusBatchJob")
                 .start(speechToTextStep())
-                .next(updateJobStep())
-                .next(insertHistoryStep())
-                .build();
+                .on("FAILED").to(updateJobFailStep) // 실패(에러)시 분기
+                .end().build();
     }
 
     // --------------- speechToTextStep() START --------------- //
@@ -84,8 +95,13 @@ public class BatchConfiguration {
         return stepBuilderFactory.get("speechToTextStep")
                 .<OctopusJob , OctopusJob>chunk(CHUNK_SIZE)
                 .reader(speechToTextReader())
-                .processor(speechToTextProcessor())
-                .writer(speechToTextWriter())
+                .processor(new SpeechToTextProcessorCustom(jdbcTemplate , gcpSttService))
+                .writer(compositeItemWriter(
+                        speechToTextWriter(),
+                        updateJobsSetStateCompleteSTT(),
+                        insertIntoJobHistoriesSTT()
+                ))
+                .listener(promotionListener())
                 .taskExecutor(executor())
                 .throttleLimit(poolSize)
                 .build();
@@ -95,7 +111,8 @@ public class BatchConfiguration {
     public JdbcPagingItemReader<OctopusJob> speechToTextReader() throws Exception {
         Map<String, Object> parameterValues = new HashMap<>();
         parameterValues.put("process_code", "STT");
-        parameterValues.put("state" , "wait");
+        parameterValues.put("state" , "WAIT");
+        parameterValues.put("state1", "FAIL");
 
         return new JdbcPagingItemReaderBuilder<OctopusJob>()
                 .pageSize(CHUNK_SIZE)
@@ -115,7 +132,7 @@ public class BatchConfiguration {
         queryProvider.setDataSource(dataSource); // Database에 맞는 PagingQueryProvider를 선택하기 위해
         queryProvider.setSelectClause("select a.* , b.value ");
         queryProvider.setFromClause("from jobs a inner join job_results b on a.pre_job_id  = b.job_id ");
-        queryProvider.setWhereClause("where a.process_code = :process_code and a.state = :state");
+        queryProvider.setWhereClause("where a.process_code = :process_code and (a.state = :state or a.state = :state1)");
 
         Map<String, Order> sortKeys = new HashMap<>(1);
         sortKeys.put("id", Order.ASCENDING);
@@ -125,106 +142,32 @@ public class BatchConfiguration {
         return queryProvider.getObject();
     }
 
-    public ItemProcessor<OctopusJob , OctopusJob> speechToTextProcessor() {
-        return octopusJob -> {
+    // --------------- speechToTextStep() END --------------- //
 
-            /* Update JOBS.state : 'WAIT' to 'PROGRESS' begin*/
-            jdbcTemplate.update("UPDATE JOBS SET STATE = 'PROGRESS' WHERE ID = ?", octopusJob.getId());
-            /* Update JOBS.state : 'WAIT' to 'PROGRESS' end*/
-
-            /* Insert into JOB_HISTORIES begin*/
-            // id                   job_id      process_code    user_id     state       created_datetime        updated_datetime
-            // auto_increment	    `job_id`	STT	            100020	    PROGRESS	2022-04-25 05:15:08	    2022-04-25 05:15:08
-
-            jdbcTemplate.update
-                    ("INSERT INTO JOB_HISTORIES (JOB_ID, PROCESS_CODE, USER_ID, STATE, CREATED_DATETIME, UPDATED_DATETIME) " +
-                                    "VALUES (? , 'STT' , ? , 'PROGRESS' , ? , ?)",
-                            octopusJob.getId() , octopusJob.getUser_id() , LocalDateTime.now() , LocalDateTime.now()
-                    );
-            /* Insert into JOB_HISTORIES end*/
-
-
-            OctopusSoundRecordInfo octopusSoundRecordInfo = new Gson().fromJson(octopusJob.getValue(), OctopusSoundRecordInfo.class);
-
-            System.out.println("BatchConfiguration.speechToTextProcessor");
-            System.out.println("octopusSoundRecordInfo = " + octopusSoundRecordInfo);
-
-            String filePath = octopusSoundRecordInfo.getAudioFile().getFilePath();
-            String fileName = octopusSoundRecordInfo.getAudioFile().getStorageFileName();
-            String destFile = "/Users/dalgakfoot/Documents/HUFS/fileStorage/"+fileName;
-
-            CommonUtil.saveFile(filePath , destFile);
-
-            StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile);
-            OctopusJobResultValue value = new OctopusJobResultValue(transcript.toString());
-
-            String newValue = new Gson().toJson(value);
-
-            octopusJob.setValue(newValue);
-            octopusJob.setUpdated_datetime(LocalDateTime.now());
-            octopusJob.setCreated_datetime(LocalDateTime.now());
-
-            return octopusJob;
-        };
-    }
+    // --------------- CompositeItemWriter() START --------------- //
 
     @Bean
     public JdbcBatchItemWriter<OctopusJob> speechToTextWriter() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("insert into job_results (job_id , value, created_datetime, updated_datetime) values (:id, :value, :created_datetime, :updated_datetime)")
+                .sql("insert into job_results (job_id , value, created_datetime, updated_datetime) values (:id, :value, :created_datetime, :updated_datetime) " +
+                        "on duplicate key update value = :value")
                 .beanMapped()
                 .build();
     }
 
-    // --------------- speechToTextStep() END --------------- //
-
-    // --------------- updateJobStep() START --------------- //
-
     @Bean
-    public Step updateJobStep() throws Exception {
-        return stepBuilderFactory.get("updateJobStep")
-                .<OctopusJob , OctopusJob>chunk(CHUNK_SIZE)
-                .reader(updateJobReader())
-                .writer(updateJobWriter())
-                .build();
-    }
-
-    @Bean
-    public JdbcPagingItemReader<OctopusJob> updateJobReader() throws Exception {
-        Map<String, Object> parameterValues = new HashMap<>();
-        parameterValues.put("process_code", "STT");
-        parameterValues.put("state" , "PROGRESS");
-
-        return new JdbcPagingItemReaderBuilder<OctopusJob>()
-                .pageSize(CHUNK_SIZE)
-                .fetchSize(CHUNK_SIZE)
+    public JdbcBatchItemWriter<OctopusJob> insertIntoJobHistoriesSTT() {
+        return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .rowMapper(new BeanPropertyRowMapper<>(OctopusJob.class))
-                .queryProvider(updateJobQueryProvider())
-                .parameterValues(parameterValues)
-                .name("speechToTextReader")
+                .sql("insert into job_histories (job_id , process_code , user_id , state , created_datetime , updated_datetime)" +
+                        "values (:id , :process_code , :user_id , 'COMPLETE' , :created_datetime , :updated_datetime) ")
+                .beanMapped()
                 .build();
     }
 
     @Bean
-    public PagingQueryProvider updateJobQueryProvider() throws Exception {
-        SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
-        queryProvider.setDataSource(dataSource);
-        queryProvider.setSelectClause("select a.* , b.value ");
-        queryProvider.setFromClause("from jobs a inner join job_results b on a.id  = b.job_id ");
-        queryProvider.setWhereClause("where a.process_code = :process_code and a.state = :state");
-
-        Map<String, Order> sortKeys = new HashMap<>(1);
-        sortKeys.put("id", Order.ASCENDING);
-
-        queryProvider.setSortKeys(sortKeys);
-
-        return queryProvider.getObject();
-    }
-
-    @Bean
-    public JdbcBatchItemWriter<OctopusJob> updateJobWriter() {
+    public JdbcBatchItemWriter<OctopusJob> updateJobsSetStateCompleteSTT() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
                 .sql("update jobs set state = 'COMPLETE' where id = :id")
@@ -232,62 +175,20 @@ public class BatchConfiguration {
                 .build();
     }
 
-    // --------------- updateJobStep() END --------------- //
 
-    // --------------- insertHistoryStep() START --------------- //
 
     @Bean
-    public Step insertHistoryStep() throws Exception {
-        return stepBuilderFactory.get("insertHistoryStep")
-                .<OctopusJob , OctopusJob>chunk(CHUNK_SIZE)
-                .reader(insertHistoryReader())
-                .writer(insertHistoryWriter())
-                .build();
+    public CompositeItemWriter<OctopusJob> compositeItemWriter(
+            @Qualifier("speechToTextWriter") JdbcBatchItemWriter<OctopusJob> speechToTextWriter,
+            @Qualifier("updateJobsSetStateCompleteSTT") JdbcBatchItemWriter<OctopusJob> updateJobsSetStateCompleteSTT,
+            @Qualifier("insertIntoJobHistoriesSTT") JdbcBatchItemWriter<OctopusJob> insertIntoJobHistoriesSTT
+    ){
+        CompositeItemWriter<OctopusJob> writer = new CompositeItemWriter<>();
+        writer.setDelegates(Arrays.asList(speechToTextWriter , updateJobsSetStateCompleteSTT, insertIntoJobHistoriesSTT));
+
+        return writer;
     }
 
-    @Bean
-    public JdbcPagingItemReader<OctopusJob> insertHistoryReader() throws Exception {
-        Map<String, Object> parameterValues = new HashMap<>();
-        parameterValues.put("process_code", "STT");
-        parameterValues.put("state" , "COMPLETE");
-
-        return new JdbcPagingItemReaderBuilder<OctopusJob>()
-                .pageSize(CHUNK_SIZE)
-                .fetchSize(CHUNK_SIZE)
-                .dataSource(dataSource)
-                .rowMapper(new BeanPropertyRowMapper<>(OctopusJob.class))
-                .queryProvider(insertHistoryQueryProvider())
-                .parameterValues(parameterValues)
-                .name("speechToTextReader")
-                .build();
-    }
-
-    @Bean
-    public PagingQueryProvider insertHistoryQueryProvider() throws Exception {
-        SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
-        queryProvider.setDataSource(dataSource);
-        queryProvider.setSelectClause("select a.* , b.value ");
-        queryProvider.setFromClause("from jobs a inner join job_results b on a.id  = b.job_id left outer join (select job_id, state from job_histories) c on a.id = c.job_id");
-        queryProvider.setWhereClause("where a.process_code = :process_code and a.state = :state and c.state = 'PROGRESS'");
-
-        Map<String, Order> sortKeys = new HashMap<>(1);
-        sortKeys.put("id", Order.ASCENDING);
-
-        queryProvider.setSortKeys(sortKeys);
-
-        return queryProvider.getObject();
-    }
-
-    @Bean
-    public JdbcBatchItemWriter<OctopusJob> insertHistoryWriter() {
-        return new JdbcBatchItemWriterBuilder<OctopusJob>()
-                .dataSource(dataSource)
-                .sql("insert into job_histories (job_id , process_code , user_id , state , created_datetime , updated_datetime)" +
-                        "values (:id , :process_code , :user_id , :state , :created_datetime , :updated_datetime) ")
-                .beanMapped()
-                .build();
-    }
-
-    // --------------- insertHistoryStep() END --------------- //
+    // --------------- CompositeItemWriter() END --------------- //
 
 }
