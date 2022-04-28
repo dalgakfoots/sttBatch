@@ -2,10 +2,11 @@ package onthelive.kr.sttBatch.entity;
 
 import lombok.Data;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Data
-public class OctopusJob {
+public class OctopusJob implements Serializable {
     private Long id;
     private String process_code;
     private Long user_id;

@@ -8,6 +8,7 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.listener.ExecutionContextPromotionListener;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
@@ -84,8 +85,10 @@ public class BatchConfiguration {
     public Job octopusBatchJob() throws Exception {
         return jobBuilderFactory.get("octopusBatchJob")
                 .start(speechToTextStep())
-                .on("FAILED").to(updateJobFailStep) // 실패(에러)시 분기
-                .end().build();
+                    .on("FAILED").to(updateJobFailStep).on("*").end()
+                .from(speechToTextStep())
+                    .on("*").end()
+                .end().incrementer(new RunIdIncrementer()).build();
     }
 
     // --------------- speechToTextStep() START --------------- //
