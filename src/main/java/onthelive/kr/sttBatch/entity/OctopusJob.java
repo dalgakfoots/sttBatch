@@ -21,6 +21,8 @@ public class OctopusJob implements Serializable {
 
     private String value; // select value from job_results
 
+    private String to_lang; // select to_lang from projects
+
     private LocalDateTime created_datetime;
     private LocalDateTime updated_datetime;
 }

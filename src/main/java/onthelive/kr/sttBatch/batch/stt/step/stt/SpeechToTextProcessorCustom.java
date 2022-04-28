@@ -3,6 +3,7 @@ package onthelive.kr.sttBatch.batch.stt.step.stt;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import onthelive.kr.sttBatch.entity.LangEnum;
 import onthelive.kr.sttBatch.entity.OctopusJob;
 import onthelive.kr.sttBatch.entity.OctopusJobResultValue;
 import onthelive.kr.sttBatch.entity.OctopusSoundRecordInfo;
@@ -55,7 +56,10 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob , O
 
         OctopusSoundRecordInfo octopusSoundRecordInfo = new Gson().fromJson(octopusJob.getValue(), OctopusSoundRecordInfo.class);
 
-        System.out.println("octopusSoundRecordInfo = " + octopusSoundRecordInfo);
+//        System.out.println("octopusSoundRecordInfo = " + octopusSoundRecordInfo);
+//        System.out.println("octopusJob.getTo_lang = " + octopusJob.getTo_lang());
+
+        String langCode = LangEnum.valueOf(octopusJob.getTo_lang()).getCode();
 
         String filePath = octopusSoundRecordInfo.getAudioFile().getFilePath();
         String fileName = octopusSoundRecordInfo.getAudioFile().getStorageFileName();
@@ -63,7 +67,7 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob , O
 
         CommonUtil.saveFile(filePath , destFile);
 
-        StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile);
+        StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile , langCode);
         OctopusJobResultValue value = new OctopusJobResultValue(transcript.toString());
 
         String newValue = new Gson().toJson(value);

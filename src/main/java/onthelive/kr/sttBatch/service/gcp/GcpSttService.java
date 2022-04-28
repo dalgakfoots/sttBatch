@@ -57,7 +57,7 @@ public class GcpSttService {
         }
     }
 
-    public StringBuffer makeTranscriptWithSync(String filePath) throws Exception{
+    public StringBuffer makeTranscriptWithSync(String filePath , String langCode) throws Exception{
 
         try (SpeechClient speech = SpeechClient.create()) {
 
@@ -72,7 +72,7 @@ public class GcpSttService {
             RecognitionConfig config =
                     RecognitionConfig.newBuilder()
                             .setEncoding(RecognitionConfig.AudioEncoding.LINEAR16)
-                            .setLanguageCode("en-US")
+                            .setLanguageCode(langCode)
                             .setSampleRateHertz(16000)
                             .build();
 

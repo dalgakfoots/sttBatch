@@ -133,8 +133,9 @@ public class BatchConfiguration {
     public PagingQueryProvider speechToTextQueryProvider() throws Exception {
         SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
         queryProvider.setDataSource(dataSource); // Database에 맞는 PagingQueryProvider를 선택하기 위해
-        queryProvider.setSelectClause("select a.* , b.value ");
-        queryProvider.setFromClause("from jobs a inner join job_results b on a.pre_job_id  = b.job_id ");
+        queryProvider.setSelectClause("select a.* , b.value , c.to_lang");
+        queryProvider.setFromClause("from jobs a inner join job_results b on a.pre_job_id  = b.job_id" +
+                " inner join (select id as pid, to_lang from projects) c on a.project_id = c.pid");
         queryProvider.setWhereClause("where a.process_code = :process_code and (a.state = :state or a.state = :state1)");
 
         Map<String, Order> sortKeys = new HashMap<>(1);
