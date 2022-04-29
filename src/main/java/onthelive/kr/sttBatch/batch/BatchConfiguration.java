@@ -1,13 +1,16 @@
 package onthelive.kr.sttBatch.batch;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import onthelive.kr.sttBatch.batch.stt.step.stt.SpeechToTextProcessorCustom;
 import onthelive.kr.sttBatch.entity.OctopusJob;
 import onthelive.kr.sttBatch.service.gcp.GcpSttService;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.listener.ExecutionContextPromotionListener;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
@@ -34,6 +37,7 @@ import java.util.Map;
 
 @Configuration
 @RequiredArgsConstructor
+@Slf4j
 public class BatchConfiguration {
 
     private final JobBuilderFactory jobBuilderFactory;
@@ -45,19 +49,13 @@ public class BatchConfiguration {
 
     private final GcpSttService gcpSttService;
 
-    private static final int CHUNK_SIZE = 50;
+    private static final int CHUNK_SIZE = 1;
 
     // --------------- MultiThread --------------- //
 
-    private int poolSize;
+    private static final int DEFAULT_POOL_SIZE = 10;
 
-    @Value("${poolSize:10}")
-    public void setPoolSize(int poolSize) {
-        this.poolSize = poolSize;
-    }
-
-    @Bean(name = "octopusBatchJobTaskPool")
-    public TaskExecutor executor() {
+    public TaskExecutor executor(int poolSize) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(poolSize);
         executor.setMaxPoolSize(poolSize);
@@ -84,9 +82,9 @@ public class BatchConfiguration {
     @Bean
     public Job octopusBatchJob() throws Exception {
         return jobBuilderFactory.get("octopusBatchJob")
-                .start(speechToTextStep())
+                .start(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
                     .on("FAILED").to(updateJobFailStep).on("*").end()
-                .from(speechToTextStep())
+                .from(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
                     .on("*").end()
                 .end().incrementer(new RunIdIncrementer()).build();
     }
@@ -94,7 +92,9 @@ public class BatchConfiguration {
     // --------------- speechToTextStep() START --------------- //
 
     @Bean
-    public Step speechToTextStep() throws Exception {
+    @JobScope
+    public Step speechToTextStep(@Value("#{jobParameters[poolSize]}") int poolSize) throws Exception {
+        log.info("How many threads are there? : " + poolSize);
         return stepBuilderFactory.get("speechToTextStep")
                 .<OctopusJob , OctopusJob>chunk(CHUNK_SIZE)
                 .reader(speechToTextReader())
@@ -105,7 +105,7 @@ public class BatchConfiguration {
                         insertIntoJobHistoriesSTT()
                 ))
                 .listener(promotionListener())
-                .taskExecutor(executor())
+                .taskExecutor(executor(poolSize))
                 .throttleLimit(poolSize)
                 .build();
     }

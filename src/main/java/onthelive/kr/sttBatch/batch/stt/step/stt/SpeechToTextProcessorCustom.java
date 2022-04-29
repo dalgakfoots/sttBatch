@@ -64,6 +64,7 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob , O
         String filePath = octopusSoundRecordInfo.getAudioFile().getFilePath();
         String fileName = octopusSoundRecordInfo.getAudioFile().getStorageFileName();
         String destFile = "/Users/dalgakfoot/Documents/HUFS/fileStorage/"+fileName;
+//        String destFile = "/opt/gcpStt/fileStore/"+fileName;
 
         CommonUtil.saveFile(filePath , destFile);
 
