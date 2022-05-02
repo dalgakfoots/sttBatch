@@ -34,30 +34,25 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob , O
     @Override
     public OctopusJob process(OctopusJob octopusJob) throws Exception {
 
-//        ExecutionContext context = stepExecution.getExecutionContext();
+        Long masterId = octopusJob.getJob_master_id();
+        Long subId = octopusJob.getJob_sub_id();
+        Long historyId = getHistoryId(masterId, subId);
+
         ExecutionContext context = stepExecution.getJobExecution().getExecutionContext();
-        context.put("jobId", octopusJob.getId());
+        context.put("jobMasterId", masterId);
+        context.put("jobSubId", subId);
 
-        /* Update JOBS.state : 'WAIT' to 'PROGRESS' begin*/
-        jdbcTemplate.update("UPDATE JOBS SET STATE = 'PROGRESS' WHERE ID = ?", octopusJob.getId());
-        /* Update JOBS.state : 'WAIT' to 'PROGRESS' end*/
+        /**/
+        jdbcTemplate.update("UPDATE JOB_MASTERS SET CURRENT_STATE = 'PROGRESS' WHERE ID = ?", masterId);
+        jdbcTemplate.update("UPDATE JOB_SUBS SET STATE = 'PROGRESS' WHERE job_master_id = ? and ID = ? ",masterId, subId);
 
-        /* Insert into JOB_HISTORIES begin*/
-        // id                   job_id      process_code    user_id     state       created_datetime        updated_datetime
-        // auto_increment	    `job_id`	STT	            100020	    PROGRESS	2022-04-25 05:15:08	    2022-04-25 05:15:08
-
-        jdbcTemplate.update
-                ("INSERT INTO JOB_HISTORIES (JOB_ID, PROCESS_CODE, USER_ID, STATE, CREATED_DATETIME, UPDATED_DATETIME) " +
-                                "VALUES (? , 'STT' , ? , 'PROGRESS' , ? , ?)",
-                        octopusJob.getId() , octopusJob.getUser_id() , LocalDateTime.now() , LocalDateTime.now()
-                );
-        /* Insert into JOB_HISTORIES end*/
-
+        jdbcTemplate.update("INSERT INTO JOB_SUB_HISTORIES (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
+                        "VALUES (?, ? , ? , ? , 'STT', 'PROGRESS' , '0')",
+                historyId, masterId, subId, octopusJob.getUser_id()
+        );
+        /**/
 
         OctopusSoundRecordInfo octopusSoundRecordInfo = new Gson().fromJson(octopusJob.getValue(), OctopusSoundRecordInfo.class);
-
-//        System.out.println("octopusSoundRecordInfo = " + octopusSoundRecordInfo);
-//        System.out.println("octopusJob.getTo_lang = " + octopusJob.getTo_lang());
 
         String langCode = LangEnum.valueOf(octopusJob.getTo_lang()).getCode();
 
@@ -78,5 +73,15 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob , O
         octopusJob.setCreated_datetime(LocalDateTime.now());
 
         return octopusJob;
+    }
+
+    /* PRIVATE METHODS */
+
+    private Long getHistoryId(Long masterId, Long subId) {
+        Long historyId = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM JOB_SUB_HISTORIES WHERE job_master_id = ? AND job_sub_id = ?", Long.class,
+                masterId, subId
+        );
+        return historyId;
     }
 }

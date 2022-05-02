@@ -73,7 +73,7 @@ public class BatchConfiguration {
     public ExecutionContextPromotionListener promotionListener() {
         ExecutionContextPromotionListener listener = new ExecutionContextPromotionListener();
 
-        listener.setKeys(new String[] {"jobId"});
+        listener.setKeys(new String[] {"jobMasterId", "jobSubId"});
 
         return listener;
     }
@@ -101,8 +101,9 @@ public class BatchConfiguration {
                 .processor(new SpeechToTextProcessorCustom(jdbcTemplate , gcpSttService))
                 .writer(compositeItemWriter(
                         speechToTextWriter(),
-                        updateJobsSetStateCompleteSTT(),
-                        insertIntoJobHistoriesSTT()
+                        updateJobMastersSetStateCompleteSTT(),
+                        insertIntoJobHistoriesSTT(),
+                        updateJobSubsSetStateCompleteSTT()
                 ))
                 .listener(promotionListener())
                 .taskExecutor(executor(poolSize))
@@ -133,13 +134,17 @@ public class BatchConfiguration {
     public PagingQueryProvider speechToTextQueryProvider() throws Exception {
         SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
         queryProvider.setDataSource(dataSource); // Database에 맞는 PagingQueryProvider를 선택하기 위해
-        queryProvider.setSelectClause("select a.* , b.value , c.to_lang");
-        queryProvider.setFromClause("from jobs a inner join job_results b on a.pre_job_id  = b.job_id" +
-                " inner join (select id as pid, to_lang from projects) c on a.project_id = c.pid");
-        queryProvider.setWhereClause("where a.process_code = :process_code and (a.state = :state or a.state = :state1)");
+        queryProvider.setSelectClause("select b.job_master_id , b.id as job_sub_id ,b.process_code , b.user_id , a.pre_job_id , b.state ,b.reject_state , b.reject_comment ," +
+                "b.project_id , b.section_id , b.segment_id , b.created_datetime , b.updated_datetime ,c.value, d.to_lang , ifnull(e.history_cnt , 0) as history_cnt");
+        queryProvider.setFromClause("from job_masters a inner join job_subs b on a.id = b.job_master_id " +
+                "inner join (select a.job_master_id as master_id , a.job_sub_id , a.value from job_sub_results a)c on a.pre_job_id = c.master_id " +
+                "inner join (select id as pid, to_lang from projects) d on a.project_id = d.pid " +
+                "left outer join (select count(*) as history_cnt, job_master_id as master_id , job_sub_id as sub_id from job_sub_histories group by job_master_id , job_sub_id) e on " +
+                "b.job_master_id = e.master_id and b.id = e.sub_id") ;
+        queryProvider.setWhereClause("where b.process_code = :process_code and (b.state = :state or b.state = :state1)");
 
         Map<String, Order> sortKeys = new HashMap<>(1);
-        sortKeys.put("id", Order.ASCENDING);
+        sortKeys.put("job_master_id", Order.ASCENDING);
 
         queryProvider.setSortKeys(sortKeys);
 
@@ -154,7 +159,8 @@ public class BatchConfiguration {
     public JdbcBatchItemWriter<OctopusJob> speechToTextWriter() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("insert into job_results (job_id , value, created_datetime, updated_datetime) values (:id, :value, :created_datetime, :updated_datetime) " +
+                .sql("insert into job_sub_results (job_master_id , job_sub_id , value) " +
+                        "values (:job_master_id , :job_sub_id , :value) " +
                         "on duplicate key update value = :value")
                 .beanMapped()
                 .build();
@@ -164,31 +170,40 @@ public class BatchConfiguration {
     public JdbcBatchItemWriter<OctopusJob> insertIntoJobHistoriesSTT() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("insert into job_histories (job_id , process_code , user_id , state , created_datetime , updated_datetime)" +
-                        "values (:id , :process_code , :user_id , 'COMPLETE' , :created_datetime , :updated_datetime) ")
+                .sql("INSERT INTO JOB_SUB_HISTORIES (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
+                        "values (:history_cnt + 1 , :job_master_id , :job_sub_id , :user_id , :process_code , 'COMPLETE' , :reject_state)")
                 .beanMapped()
                 .build();
     }
 
     @Bean
-    public JdbcBatchItemWriter<OctopusJob> updateJobsSetStateCompleteSTT() {
+    public JdbcBatchItemWriter<OctopusJob> updateJobMastersSetStateCompleteSTT() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("update jobs set state = 'COMPLETE' where id = :id")
+                .sql("update job_masters set current_state = 'COMPLETE' where id = :job_master_id")
                 .beanMapped()
                 .build();
     }
 
+    @Bean
+    public JdbcBatchItemWriter<OctopusJob> updateJobSubsSetStateCompleteSTT() {
+        return new JdbcBatchItemWriterBuilder<OctopusJob>()
+                .dataSource(dataSource)
+                .sql("update job_subs set state = 'COMPLETE' where job_master_id = :job_master_id and id = :job_sub_id")
+                .beanMapped()
+                .build();
+    }
 
 
     @Bean
     public CompositeItemWriter<OctopusJob> compositeItemWriter(
             @Qualifier("speechToTextWriter") JdbcBatchItemWriter<OctopusJob> speechToTextWriter,
-            @Qualifier("updateJobsSetStateCompleteSTT") JdbcBatchItemWriter<OctopusJob> updateJobsSetStateCompleteSTT,
-            @Qualifier("insertIntoJobHistoriesSTT") JdbcBatchItemWriter<OctopusJob> insertIntoJobHistoriesSTT
+            @Qualifier("updateJobMastersSetStateCompleteSTT") JdbcBatchItemWriter<OctopusJob> updateJobsSetStateCompleteSTT,
+            @Qualifier("insertIntoJobHistoriesSTT") JdbcBatchItemWriter<OctopusJob> insertIntoJobHistoriesSTT,
+            @Qualifier("updateJobSubsSetStateCompleteSTT") JdbcBatchItemWriter<OctopusJob> updateJobSubsSetStateCompleteSTT
     ){
         CompositeItemWriter<OctopusJob> writer = new CompositeItemWriter<>();
-        writer.setDelegates(Arrays.asList(speechToTextWriter , updateJobsSetStateCompleteSTT, insertIntoJobHistoriesSTT));
+        writer.setDelegates(Arrays.asList(speechToTextWriter , updateJobsSetStateCompleteSTT, insertIntoJobHistoriesSTT , updateJobSubsSetStateCompleteSTT));
 
         return writer;
     }
