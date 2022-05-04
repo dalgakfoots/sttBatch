@@ -30,8 +30,8 @@ public class FailStepTasklet implements Tasklet {
         jdbcTemplate.update("UPDATE JOB_SUBS SET STATE = 'FAIL' WHERE job_master_id = ? and ID = ? ", jobMasterId, jobSubId);
 
         jdbcTemplate.update("INSERT INTO JOB_SUB_HISTORIES (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
-                        "SELECT ?, job_master_id , id , user_id ,  process_code, 'FAIL', '0' FROM JOB_SUBS WHERE id = ?"
-                , historyId, jobSubId);
+                        "SELECT ?, job_master_id , id , user_id ,  process_code, 'FAIL', '0' FROM JOB_SUBS WHERE job_master_id = ? AND id = ?"
+                , historyId, jobMasterId, jobSubId);
 
         return RepeatStatus.FINISHED;
     }

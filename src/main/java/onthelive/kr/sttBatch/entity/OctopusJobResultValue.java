@@ -8,5 +8,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class OctopusJobResultValue {
-    public String value;
+    private int index;
+    private String sttText;
 }

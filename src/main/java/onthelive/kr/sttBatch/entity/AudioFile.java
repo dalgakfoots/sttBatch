@@ -1,8 +1,11 @@
 package onthelive.kr.sttBatch.entity;
 
-import lombok.Data;
+import lombok.*;
 
-@Data
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
 public class AudioFile {
 
     private String originFileName;
