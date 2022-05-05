@@ -10,7 +10,6 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.listener.ExecutionContextPromotionListener;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
@@ -46,6 +45,9 @@ public class BatchConfiguration {
     private final DataSource dataSource;
 
     private final Step updateJobFailStep;
+
+    private final Step updateSectionStep;
+    private final Step updateSegmentStep;
 
     private final GcpSttService gcpSttService;
 
@@ -85,8 +87,8 @@ public class BatchConfiguration {
                 .start(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
                     .on("FAILED").to(updateJobFailStep).on("*").end()
                 .from(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
-                    .on("*").end()
-                .end().incrementer(new RunIdIncrementer()).build();
+                    .on("*").to(updateSegmentStep).on("*").to(updateSectionStep).end()
+                .incrementer(new RunIdIncrementer()).build();
     }
 
     // --------------- speechToTextStep() START --------------- //
