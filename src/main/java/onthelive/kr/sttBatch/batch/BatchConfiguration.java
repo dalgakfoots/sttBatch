@@ -84,10 +84,11 @@ public class BatchConfiguration {
     @Bean
     public Job octopusBatchJob() throws Exception {
         return jobBuilderFactory.get("octopusBatchJob")
-                .start(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
-                    .on("FAILED").to(updateJobFailStep).on("*").end()
-                .from(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
-                    .on("*").to(updateSegmentStep).on("*").to(updateSectionStep).end()
+//                .start(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
+//                    .on("FAILED").to(updateJobFailStep).on("*").end()
+//                .from(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
+//                    .on("*").to(updateSegmentStep).on("*").to(updateSectionStep).end()
+                .start(speechToTextStep(DEFAULT_POOL_SIZE)).on("*").to(updateSegmentStep).on("*").to(updateSectionStep).end()
                 .incrementer(new RunIdIncrementer()).build();
     }
 
@@ -163,7 +164,7 @@ public class BatchConfiguration {
                 .dataSource(dataSource)
                 .sql("insert into job_sub_results (job_master_id , job_sub_id , value) " +
                         "values (:job_master_id , :job_sub_id , :value) " +
-                        "on duplicate key update value = :value")
+                        "on duplicate key update value = :value, updated_datetime = now()")
                 .beanMapped()
                 .build();
     }
@@ -172,8 +173,9 @@ public class BatchConfiguration {
     public JdbcBatchItemWriter<OctopusJob> insertIntoJobHistoriesSTT() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("INSERT INTO JOB_SUB_HISTORIES (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
-                        "values (:history_cnt + 1 , :job_master_id , :job_sub_id , :user_id , :process_code , 'COMPLETE' , :reject_state)")
+                .sql("INSERT INTO job_sub_histories (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
+                        "values (:history_cnt + 1 , :job_master_id , :job_sub_id , :user_id , :process_code , :state , :reject_state) " +
+                        "on duplicate key update state = :state")
                 .beanMapped()
                 .build();
     }
@@ -182,7 +184,7 @@ public class BatchConfiguration {
     public JdbcBatchItemWriter<OctopusJob> updateJobMastersSetStateCompleteSTT() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("update job_masters set current_state = 'COMPLETE' where id = :job_master_id")
+                .sql("update job_masters set current_state = :state , updated_datetime = now() where id = :job_master_id")
                 .beanMapped()
                 .build();
     }
@@ -191,7 +193,7 @@ public class BatchConfiguration {
     public JdbcBatchItemWriter<OctopusJob> updateJobSubsSetStateCompleteSTT() {
         return new JdbcBatchItemWriterBuilder<OctopusJob>()
                 .dataSource(dataSource)
-                .sql("update job_subs set state = 'COMPLETE' where job_master_id = :job_master_id and id = :job_sub_id")
+                .sql("update job_subs set state = :state, updated_datetime = now() where job_master_id = :job_master_id and id = :job_sub_id")
                 .beanMapped()
                 .build();
     }

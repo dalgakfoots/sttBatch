@@ -26,11 +26,11 @@ public class FailStepTasklet implements Tasklet {
         Long jobMasterId = (Long) context.get("jobMasterId");
         Long jobSubId = (Long) context.get("jobSubId");
         Long historyId = getHistoryId(jobMasterId, jobSubId) + 1;
-        jdbcTemplate.update("UPDATE JOB_MASTERS SET CURRENT_STATE = 'FAIL' WHERE ID = ?", jobMasterId);
-        jdbcTemplate.update("UPDATE JOB_SUBS SET STATE = 'FAIL' WHERE job_master_id = ? and ID = ? ", jobMasterId, jobSubId);
+        jdbcTemplate.update("UPDATE job_masters SET current_state = 'FAIL', updated_datetime = now() WHERE id = ?", jobMasterId);
+        jdbcTemplate.update("UPDATE job_subs SET state = 'FAIL', updated_datetime = now() WHERE job_master_id = ? and id = ? ", jobMasterId, jobSubId);
 
-        jdbcTemplate.update("INSERT INTO JOB_SUB_HISTORIES (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
-                        "SELECT ?, job_master_id , id , user_id ,  process_code, 'FAIL', '0' FROM JOB_SUBS WHERE job_master_id = ? AND id = ?"
+        jdbcTemplate.update("INSERT INTO job_sub_histories (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
+                        "SELECT ?, job_master_id , id , user_id ,  process_code, 'FAIL', '0' FROM job_subs WHERE job_master_id = ? AND id = ?"
                 , historyId, jobMasterId, jobSubId);
 
         return RepeatStatus.FINISHED;
@@ -40,7 +40,7 @@ public class FailStepTasklet implements Tasklet {
 
     private Long getHistoryId(Long masterId, Long subId) {
         Long historyId = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM JOB_SUB_HISTORIES WHERE job_master_id = ? AND job_sub_id = ?", Long.class,
+                "SELECT COUNT(*) FROM job_sub_histories WHERE job_master_id = ? AND job_sub_id = ?", Long.class,
                 masterId, subId
         );
         return historyId;

@@ -7,6 +7,7 @@ import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -40,14 +41,14 @@ public class UpdateSegmentStepTasklet implements Tasklet {
 
     private void updateSegmentsStateToComplete(Segment segment) {
         jdbcTemplate.update(
-                "UPDATE SEGMENTS SET CURRENT_STATE = 'COMPLETE' " +
-                        "WHERE ID = ? AND PROJECT_ID = ? AND DOCUMENT_ID = ? AND SECTION_ID = ?",
+                "UPDATE segments SET current_state = 'COMPLETE', updated_datetime = now() " +
+                        "WHERE id = ? AND project_id = ? AND document_id = ? AND section_id = ?",
                 segment.getId() , segment.getProjectId() , segment.getDocumentId() , segment.getSectionId()
         );
     }
 
     private List<Segment> getSegments(){
-        return jdbcTemplate.queryForList(
+        return jdbcTemplate.query(
                 "select " +
                         "a.id, " +
                         "a.project_id as projectId , " +
@@ -95,6 +96,6 @@ public class UpdateSegmentStepTasklet implements Tasklet {
                         "a.project_id , " +
                         "a.document_id , " +
                         "a.section_id"
-                ,Segment.class);
+                ,new BeanPropertyRowMapper<Segment>(Segment.class));
     }
 }
