@@ -48,6 +48,7 @@ public class BatchConfiguration {
 
     private final Step updateSectionStep;
     private final Step updateSegmentStep;
+    private final Step updateSectionUserStep;
 
     private final GcpSttService gcpSttService;
 
@@ -88,7 +89,11 @@ public class BatchConfiguration {
 //                    .on("FAILED").to(updateJobFailStep).on("*").end()
 //                .from(speechToTextStep(DEFAULT_POOL_SIZE)) // TODO 이곳에 작성된 파라미터 int poolSize 는 무시된다.
 //                    .on("*").to(updateSegmentStep).on("*").to(updateSectionStep).end()
-                .start(speechToTextStep(DEFAULT_POOL_SIZE)).on("*").to(updateSegmentStep).on("*").to(updateSectionStep).end()
+                .start(speechToTextStep(DEFAULT_POOL_SIZE))
+                .on("*").to(updateSegmentStep)
+                .on("*").to(updateSectionStep)
+                .on("*").to(updateSectionUserStep)
+                .end()
                 .incrementer(new RunIdIncrementer()).build();
     }
 

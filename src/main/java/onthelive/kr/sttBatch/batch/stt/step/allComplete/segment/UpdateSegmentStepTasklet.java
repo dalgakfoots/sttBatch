@@ -27,8 +27,10 @@ public class UpdateSegmentStepTasklet implements Tasklet {
         if(segments.size() > 0) {
             segments.forEach(
                     e -> {
-                        if (Objects.equals(e.getCnt(), e.getCnt2())) {
-                            updateSegmentsStateToComplete(e);
+                        if (e.getCnt() != 0 && e.getCnt2() != 0) {
+                            if (Objects.equals(e.getCnt(), e.getCnt2())) {
+                                updateSegmentsStateToComplete(e);
+                            }
                         }
                     }
             );

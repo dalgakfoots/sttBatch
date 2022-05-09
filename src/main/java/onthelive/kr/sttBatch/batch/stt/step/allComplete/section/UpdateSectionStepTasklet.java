@@ -24,11 +24,13 @@ public class UpdateSectionStepTasklet implements Tasklet {
     @Override
     public RepeatStatus execute(StepContribution stepContribution, ChunkContext chunkContext) throws Exception {
         List<Section> sections = getSections();
-        if(sections.size() > 0) {
+        if (sections.size() > 0) {
             sections.forEach(
                     e -> {
-                        if(Objects.equals(e.getSegmentCount() , e.getCnt())){
-                            updateSectionsStateToComplete(e);
+                        if (e.getSegmentCount() != 0 && e.getCnt() != 0) {
+                            if (Objects.equals(e.getSegmentCount(), e.getCnt())) {
+                                updateSectionsStateToComplete(e);
+                            }
                         }
                     }
             );
@@ -42,7 +44,7 @@ public class UpdateSectionStepTasklet implements Tasklet {
         jdbcTemplate.update(
                 "UPDATE sections SET current_state = 'COMPLETE', updated_datetime = now() " +
                         "WHERE id = ? AND project_id = ? AND document_id = ?"
-                ,section.getId(), section.getProjectId() , section.getDocumentId()
+                , section.getId(), section.getProjectId(), section.getDocumentId()
         );
     }
 
@@ -69,7 +71,7 @@ public class UpdateSectionStepTasklet implements Tasklet {
                         "a.id, " +
                         "a.project_id , " +
                         "a.document_id"
-                ,new BeanPropertyRowMapper<Section>(Section.class)
+                , new BeanPropertyRowMapper<Section>(Section.class)
         );
     }
 }
