@@ -12,7 +12,6 @@ import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +78,7 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, Oc
                 String filePath = e.getAudioFile().getFilePath();
                 String fileName = e.getAudioFile().getStorageFileName();
                 String destFile = "/Users/dalgakfoot/Documents/HUFS/fileStorage/" + fileName;
+//                String destFile = "/opt/gcpStt/fileStore/"+fileName;
 
                 CommonUtil.saveFile(filePath, destFile);
                 StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile, langCode);

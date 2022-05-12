@@ -125,6 +125,7 @@ public class BatchConfiguration {
         parameterValues.put("process_code", "STT");
         parameterValues.put("state" , "WAIT");
         parameterValues.put("state1", "FAIL");
+        parameterValues.put("project_type_code", "12"); // TODO property 로 별도로 관리하여 16번 에서도 사용할 수 있도록!
 
         return new JdbcPagingItemReaderBuilder<OctopusJob>()
                 .pageSize(CHUNK_SIZE)
@@ -143,13 +144,13 @@ public class BatchConfiguration {
         SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
         queryProvider.setDataSource(dataSource); // Database에 맞는 PagingQueryProvider를 선택하기 위해
         queryProvider.setSelectClause("select b.job_master_id , b.id as job_sub_id ,b.process_code , b.user_id , a.pre_job_id , b.state ,b.reject_state , b.reject_comment ," +
-                "b.project_id , b.section_id , b.segment_id , b.created_datetime , b.updated_datetime ,c.value, d.to_lang , ifnull(e.history_cnt , 0) as history_cnt");
+                "b.project_id , b.section_id , b.segment_id , b.created_datetime , b.updated_datetime ,c.value, d.to_lang , d.project_type_code , ifnull(e.history_cnt , 0) as history_cnt");
         queryProvider.setFromClause("from job_masters a inner join job_subs b on a.id = b.job_master_id " +
                 "inner join (select a.job_master_id as master_id , a.job_sub_id , a.value from job_sub_results a)c on a.pre_job_id = c.master_id " +
-                "inner join (select id as pid, to_lang from projects) d on a.project_id = d.pid " +
+                "inner join (select id as pid, to_lang, project_type_code from projects) d on a.project_id = d.pid " +
                 "left outer join (select count(*) as history_cnt, job_master_id as master_id , job_sub_id as sub_id from job_sub_histories group by job_master_id , job_sub_id) e on " +
                 "b.job_master_id = e.master_id and b.id = e.sub_id") ;
-        queryProvider.setWhereClause("where b.process_code = :process_code and (b.state = :state or b.state = :state1)");
+        queryProvider.setWhereClause("where b.process_code = :process_code and (b.state = :state or b.state = :state1) and d.project_type_code = :project_type_code");
 
         Map<String, Order> sortKeys = new HashMap<>(1);
         sortKeys.put("job_master_id", Order.ASCENDING);

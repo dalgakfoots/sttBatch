@@ -23,6 +23,7 @@ public class OctopusJob implements Serializable {
     private String value; // select value from job_results
 
     private String to_lang; // select to_lang from projects
+    private String project_type_code; // select project_type_code from projects
 
     private Long history_cnt;
 
