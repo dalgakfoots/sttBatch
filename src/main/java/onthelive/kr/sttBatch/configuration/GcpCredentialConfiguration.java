@@ -1,5 +1,7 @@
 package onthelive.kr.sttBatch.configuration;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
 import javax.annotation.PostConstruct;
@@ -9,7 +11,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Configuration
+@RequiredArgsConstructor
 public class GcpCredentialConfiguration {
+
+    @Value("${google.credential.key-directory}")
+    private String credentialKey;
 
     /*
      * GCP 사용을 위한 Credential 환경변수 처리 Configuration
@@ -52,9 +58,7 @@ public class GcpCredentialConfiguration {
         // GCP 사용을 위한 환경변수 적용 시작
         Map<String, String> google = new HashMap<>();
         google.put("GOOGLE_APPLICATION_CREDENTIALS",
-                "/Users/dalgakfoot/Documents/sttBatch/skillful-eon-349406-6ce935293e40.json");
-//        google.put("GOOGLE_APPLICATION_CREDENTIALS",
-//                "/opt/gcpStt/credentials/credentials.json");
+                credentialKey);
 
         setEnv(google);
         // GCP 사용을 위한 환경변수 적용 끝
