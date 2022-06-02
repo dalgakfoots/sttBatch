@@ -10,7 +10,9 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.annotation.BeforeStep;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -18,12 +20,16 @@ import java.util.List;
 
 @RequiredArgsConstructor
 @Slf4j
+@Component
 public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, OctopusJob> {
 
     private final JdbcTemplate jdbcTemplate;
     private final GcpSttService gcpSttService;
 
     private StepExecution stepExecution;
+
+    @Value("${dest-file}")
+    private String fileStore;
 
     @BeforeStep
     public void saveStepExecution(StepExecution stepExecution) {
@@ -58,27 +64,11 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, Oc
         List<AudioResultSegment> segments = octopusSoundRecordInfo.getAudioResultBySegment();
         List<OctopusJobResultValue> valueResults = new ArrayList<>();
         try {
-//            segments.forEach(
-//                    e -> {
-//                        String filePath = e.getAudioFile().getFilePath();
-//                        String fileName = e.getAudioFile().getStorageFileName();
-//                        String destFile = "/Users/dalgakfoot/Documents/HUFS/fileStorage/" + fileName;
-//
-//
-//                        StringBuffer transcript = null;
-//
-//                        CommonUtil.saveFile(filePath, destFile);
-//                        transcript = gcpSttService.makeTranscriptWithSync(destFile, langCode);
-//                        OctopusJobResultValue value = new OctopusJobResultValue(e.getIndex(), transcript.toString());
-//                        valueResults.add(value);
-//
-//                    }
-//            );
+
             for (AudioResultSegment e : segments) {
                 String filePath = e.getAudioFile().getFilePath();
                 String fileName = e.getAudioFile().getStorageFileName();
-                String destFile = "/Users/dalgakfoot/Documents/HUFS/fileStorage/" + fileName;
-//                String destFile = "/opt/gcpStt/fileStore/"+fileName;
+                String destFile = fileStore+fileName;
 
                 CommonUtil.saveFile(filePath, destFile);
                 StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile, langCode);

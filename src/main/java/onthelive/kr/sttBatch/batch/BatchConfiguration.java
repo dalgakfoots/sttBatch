@@ -54,6 +54,9 @@ public class BatchConfiguration {
 
     private static final int CHUNK_SIZE = 1;
 
+    @Value("${project-type-code}")
+    private String projectTypeCode;
+
     // --------------- MultiThread --------------- //
 
     private static final int DEFAULT_POOL_SIZE = 10;
@@ -125,7 +128,7 @@ public class BatchConfiguration {
         parameterValues.put("process_code", "STT");
         parameterValues.put("state" , "WAIT");
         parameterValues.put("state1", "FAIL");
-        parameterValues.put("project_type_code", "12"); // TODO property 로 별도로 관리하여 16번 에서도 사용할 수 있도록!
+        parameterValues.put("project_type_code", projectTypeCode); // TODO property 로 별도로 관리하여 16번 에서도 사용할 수 있도록!
 
         return new JdbcPagingItemReaderBuilder<OctopusJob>()
                 .pageSize(CHUNK_SIZE)
