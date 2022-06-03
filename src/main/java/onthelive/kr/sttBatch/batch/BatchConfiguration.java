@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import onthelive.kr.sttBatch.batch.stt.step.stt.SpeechToTextProcessorCustom;
 import onthelive.kr.sttBatch.entity.OctopusJob;
-import onthelive.kr.sttBatch.service.gcp.GcpSttService;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -26,7 +25,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import javax.sql.DataSource;
@@ -41,16 +39,13 @@ public class BatchConfiguration {
 
     private final JobBuilderFactory jobBuilderFactory;
     private final StepBuilderFactory stepBuilderFactory;
-    private final JdbcTemplate jdbcTemplate;
     private final DataSource dataSource;
-
-    private final Step updateJobFailStep;
 
     private final Step updateSectionStep;
     private final Step updateSegmentStep;
     private final Step updateSectionUserStep;
 
-    private final GcpSttService gcpSttService;
+    private final SpeechToTextProcessorCustom speechToTextProcessorCustom;
 
     private static final int CHUNK_SIZE = 1;
 
@@ -109,7 +104,7 @@ public class BatchConfiguration {
         return stepBuilderFactory.get("speechToTextStep")
                 .<OctopusJob , OctopusJob>chunk(CHUNK_SIZE)
                 .reader(speechToTextReader())
-                .processor(new SpeechToTextProcessorCustom(jdbcTemplate , gcpSttService))
+                .processor(speechToTextProcessorCustom)
                 .writer(compositeItemWriter(
                         speechToTextWriter(),
                         updateJobMastersSetStateCompleteSTT(),

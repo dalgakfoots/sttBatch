@@ -71,6 +71,7 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, Oc
                 String destFile = fileStore+fileName;
 
                 CommonUtil.saveFile(filePath, destFile);
+                CommonUtil.deleteFile(destFile);
                 StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile, langCode);
                 OctopusJobResultValue value = new OctopusJobResultValue(e.getIndex(), transcript.toString());
                 valueResults.add(value);

@@ -18,9 +18,9 @@ public class CommonUtil {
     * TODO 반드시! 실행하기 전 경로 확인을 할 것.... 매우 위험함
     *  테스트 이후로는 public 으로 두지 말고 방법 강구할 것.
     * */
-    public static void deleteAllFile(String fileStorePath) throws Exception {
-        File f = new File(fileStorePath);
-        FileUtils.deleteDirectory(f);
+    public static void deleteFile(String filePath) throws Exception {
+        File f = new File(filePath);
+        FileUtils.delete(f);
     }
 
 
