@@ -31,6 +31,11 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, Oc
     @Value("${dest-file}")
     private String fileStore;
 
+    @Value("${total-instance-number}")
+    private Integer totalInstanceNumber;
+    @Value("${instance-number}")
+    private Integer instanceNumber;
+
     @BeforeStep
     public void saveStepExecution(StepExecution stepExecution) {
         this.stepExecution = stepExecution;
@@ -39,65 +44,79 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, Oc
     @Override
     public OctopusJob process(OctopusJob octopusJob) throws Exception {
 
+
         Long masterId = octopusJob.getJob_master_id();
-        Long subId = octopusJob.getJob_sub_id();
-        Long historyId = getHistoryId(masterId, subId) + 1;
+        boolean isStart = checkMasterId(masterId); // Processor 를 실행 시킬 것인가?
 
-        ExecutionContext context = stepExecution.getJobExecution().getExecutionContext();
-        context.put("jobMasterId", masterId);
-        context.put("jobSubId", subId);
+        if(isStart) {
+            Long subId = octopusJob.getJob_sub_id();
+            Long historyId = getHistoryId(masterId, subId) + 1;
 
-        /**/
-        jdbcTemplate.update("UPDATE job_masters SET current_state = 'PROGRESS', updated_datetime = now() WHERE id = ?", masterId);
-        jdbcTemplate.update("UPDATE job_subs SET state = 'PROGRESS', updated_datetime = now() WHERE job_master_id = ? and id = ? ", masterId, subId);
+            ExecutionContext context = stepExecution.getJobExecution().getExecutionContext();
+            context.put("jobMasterId", masterId);
+            context.put("jobSubId", subId);
 
-        jdbcTemplate.update("INSERT INTO job_sub_histories (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
-                        "VALUES (?, ? , ? , ? , 'STT', 'PROGRESS' , '0')",
-                historyId, masterId, subId, octopusJob.getUser_id()
-        );
-        /**/
 
-        OctopusSoundRecordInfo octopusSoundRecordInfo = new Gson().fromJson(octopusJob.getValue(), OctopusSoundRecordInfo.class);
+            /**/
+            jdbcTemplate.update("UPDATE job_masters SET current_state = 'PROGRESS', updated_datetime = now() WHERE id = ?", masterId);
+            jdbcTemplate.update("UPDATE job_subs SET state = 'PROGRESS', updated_datetime = now() WHERE job_master_id = ? and id = ? ", masterId, subId);
 
-        String langCode = LangEnum.valueOf(octopusJob.getTo_lang()).getCode();
+            jdbcTemplate.update("INSERT INTO job_sub_histories (id, job_master_id, job_sub_id, user_id, process_code, state, reject_state) " +
+                            "VALUES (?, ? , ? , ? , 'STT', 'PROGRESS' , '0')",
+                    historyId, masterId, subId, octopusJob.getUser_id()
+            );
+            /**/
 
-        List<AudioResultSegment> segments = octopusSoundRecordInfo.getAudioResultBySegment();
-        List<OctopusJobResultValue> valueResults = new ArrayList<>();
-        try {
+            OctopusSoundRecordInfo octopusSoundRecordInfo = new Gson().fromJson(octopusJob.getValue(), OctopusSoundRecordInfo.class);
 
-            for (AudioResultSegment e : segments) {
-                String filePath = e.getAudioFile().getFilePath();
-                String fileName = e.getAudioFile().getStorageFileName();
-                String destFile = fileStore+fileName;
+            String langCode = LangEnum.valueOf(octopusJob.getTo_lang()).getCode();
 
-                CommonUtil.saveFile(filePath, destFile);
-                CommonUtil.deleteFile(destFile);
-                StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile, langCode);
-                OctopusJobResultValue value = new OctopusJobResultValue(e.getIndex(), transcript.toString());
-                valueResults.add(value);
+            List<AudioResultSegment> segments = octopusSoundRecordInfo.getAudioResultBySegment();
+            List<OctopusJobResultValue> valueResults = new ArrayList<>();
+            try {
+
+                for (AudioResultSegment e : segments) {
+                    String filePath = e.getAudioFile().getFilePath();
+                    String fileName = e.getAudioFile().getStorageFileName();
+                    String destFile = fileStore + fileName;
+
+                    CommonUtil.saveFile(filePath, destFile);
+                    StringBuffer transcript = gcpSttService.makeTranscriptWithSync(destFile, langCode);
+                    OctopusJobResultValue value = new OctopusJobResultValue(e.getIndex(), transcript.toString());
+                    valueResults.add(value);
+                    CommonUtil.deleteFile(destFile);
+                }
+            } catch (Exception ex) {
+                log.info("failed masterId: " + masterId);
+                log.info("failed subId: " + subId);
+                log.info("failed historyId: " + historyId);
+                log.info("failed octopusJob.getUSer_id() : " + octopusJob.getUser_id());
+                ex.printStackTrace();
+                failProcess(masterId, subId, historyId, octopusJob.getUser_id());
+                octopusJob.setState("FAIL");
+                octopusJob.setValue("ERROR");
+                octopusJob.setUpdated_datetime(LocalDateTime.now());
+                octopusJob.setCreated_datetime(LocalDateTime.now());
+                octopusJob.setHistory_cnt(historyId);
+                return octopusJob;
             }
-        } catch (Exception ex) {
-            log.info("failed masterId: " + masterId);
-            log.info("failed subId: " + subId);
-            log.info("failed historyId: " + historyId);
-            log.info("failed octopusJob.getUSer_id() : " + octopusJob.getUser_id());
-            ex.printStackTrace();
-            failProcess(masterId, subId, historyId, octopusJob.getUser_id());
-            octopusJob.setState("FAIL");
-            octopusJob.setValue("ERROR");
+
+            String newValue = new Gson().toJson(valueResults);
+            octopusJob.setState("COMPLETE");
+            octopusJob.setValue(newValue);
             octopusJob.setUpdated_datetime(LocalDateTime.now());
             octopusJob.setCreated_datetime(LocalDateTime.now());
             octopusJob.setHistory_cnt(historyId);
             return octopusJob;
+        } else {
+            // TODO 프로세서를 실행 안시킬 경우?
+            octopusJob.setState("WAIT");
+            octopusJob.setValue("");
+            octopusJob.setUpdated_datetime(LocalDateTime.now());
+            octopusJob.setCreated_datetime(LocalDateTime.now());
+            octopusJob.setHistory_cnt(0L);
+            return octopusJob;
         }
-
-        String newValue = new Gson().toJson(valueResults);
-        octopusJob.setState("COMPLETE");
-        octopusJob.setValue(newValue);
-        octopusJob.setUpdated_datetime(LocalDateTime.now());
-        octopusJob.setCreated_datetime(LocalDateTime.now());
-        octopusJob.setHistory_cnt(historyId);
-        return octopusJob;
     }
 
     /* PRIVATE METHODS */
@@ -121,4 +140,13 @@ public class SpeechToTextProcessorCustom implements ItemProcessor<OctopusJob, Oc
                 historyId + 1, masterId, subId, userId
         );
     }
+
+    private boolean checkMasterId(Long masterId) {
+        if(totalInstanceNumber != null && instanceNumber != null) {
+            return true;
+        } else {
+            return true;
+        }
+    }
+
 }

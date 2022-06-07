@@ -2,6 +2,7 @@ package onthelive.kr.sttBatch.batch;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import onthelive.kr.sttBatch.batch.listener.NoWorkFoundStepExecutionListener;
 import onthelive.kr.sttBatch.batch.stt.step.stt.SpeechToTextProcessorCustom;
 import onthelive.kr.sttBatch.entity.OctopusJob;
 import org.springframework.batch.core.Job;
@@ -51,6 +52,11 @@ public class BatchConfiguration {
 
     @Value("${project-type-code}")
     private String projectTypeCode;
+
+    @Value("${total-instance-number}")
+    private Integer totalInstanceNumber;
+    @Value("${instance-number}")
+    private Integer instanceNumber;
 
     // --------------- MultiThread --------------- //
 
@@ -111,6 +117,7 @@ public class BatchConfiguration {
                         insertIntoJobHistoriesSTT(),
                         updateJobSubsSetStateCompleteSTT()
                 ))
+                .listener(new NoWorkFoundStepExecutionListener())
                 .listener(promotionListener())
                 .taskExecutor(executor(poolSize))
                 .throttleLimit(poolSize)
@@ -124,6 +131,9 @@ public class BatchConfiguration {
         parameterValues.put("state" , "WAIT");
         parameterValues.put("state1", "FAIL");
         parameterValues.put("project_type_code", projectTypeCode); // TODO property 로 별도로 관리하여 16번 에서도 사용할 수 있도록!
+
+        parameterValues.put("totalInstanceNumber",totalInstanceNumber);
+        parameterValues.put("instanceNumber", instanceNumber);
 
         return new JdbcPagingItemReaderBuilder<OctopusJob>()
                 .pageSize(CHUNK_SIZE)
